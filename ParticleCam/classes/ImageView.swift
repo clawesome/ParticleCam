@@ -14,63 +14,53 @@ import MetalKit
 /// `MetalImageView` extends an `MTKView` and exposes an `image` property of type `CIImage` to
 /// simplify Metal based rendering of Core Image filters.
 
-class MetalImageView: MTKView
-{
-    let colorSpace = CGColorSpaceCreateDeviceRGB()!
+class MetalImageView: MTKView {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
     
-    lazy var commandQueue: MTLCommandQueue =
-    {
+    lazy var commandQueue: MTLCommandQueue = {
         [unowned self] in
         
-        return self.device!.newCommandQueue()
+        return self.device!.makeCommandQueue()!
     }()
     
-    lazy var ciContext: CIContext =
-    {
+    lazy var ciContext: CIContext = {
         [unowned self] in
         
-        return CIContext(MTLDevice: self.device!)
+        return CIContext(mtlDevice: self.device!)
     }()
     
-    override init(frame frameRect: CGRect, device: MTLDevice?)
-    {
+    override init(frame frameRect: CGRect, device: MTLDevice?) {
         super.init(frame: frameRect,
             device: device ?? MTLCreateSystemDefaultDevice())
         
-        if super.device == nil
-        {
+        if super.device == nil {
             fatalError("Device doesn't support Metal")
         }
         
         framebufferOnly = false
     }
     
-    required init(coder: NSCoder)
-    {
+    required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
     /// The image to display
-    var image: CIImage?
-    {
-        didSet
-        {
+    var image: CIImage? {
+        didSet {
             renderImage()
         }
     }
 
-    func renderImage()
-    {
+    func renderImage() {
         guard let
             image = image,
-            targetTexture = currentDrawable?.texture else
-        {
+            let targetTexture = currentDrawable?.texture else {
             return
         }
         
-        let commandBuffer = commandQueue.commandBuffer()
+        let commandBuffer = commandQueue.makeCommandBuffer()
         
-        let bounds = CGRect(origin: CGPointZero, size: drawableSize)
+        let bounds = CGRect(origin: CGPoint.zero, size: drawableSize)
         
         let originX = image.extent.origin.x
         let originY = image.extent.origin.y
@@ -80,18 +70,18 @@ class MetalImageView: MTKView
         let scale = min(scaleX, scaleY)
         
         let scaledImage = image
-            .imageByApplyingTransform(CGAffineTransformMakeTranslation(-originX, -originY))
-            .imageByApplyingTransform(CGAffineTransformMakeScale(scale, scale))
+            .transformed(by: CGAffineTransform(translationX: -originX, y: -originY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         
         ciContext.render(scaledImage,
-            toMTLTexture: targetTexture,
+                         to: targetTexture,
             commandBuffer: commandBuffer,
             bounds: bounds,
             colorSpace: colorSpace)
         
-        commandBuffer.presentDrawable(currentDrawable!)
+        commandBuffer!.present(currentDrawable!)
         
-        commandBuffer.commit()
+        commandBuffer!.commit()
     }
 }
 
@@ -103,85 +93,72 @@ class MetalImageView: MTKView
 ///
 /// `OpenGLImageView` also respects `backgroundColor` for opaque colors
 
-class OpenGLImageView: GLKView
-{
-    let eaglContext = EAGLContext(API: .OpenGLES2)
+class OpenGLImageView: GLKView {
+    let eaglContext = EAGLContext(api: .openGLES2)
     
-    lazy var ciContext: CIContext =
-    {
+    lazy var ciContext: CIContext = {
         [unowned self] in
         
-        return CIContext(EAGLContext: self.eaglContext,
-            options: [kCIContextWorkingColorSpace: NSNull()])
+        return CIContext(eaglContext: self.eaglContext!,
+                         options: [CIContextOption.workingColorSpace: NSNull()])
         }()
     
-    override init(frame: CGRect)
-    {
-        super.init(frame: frame, context: eaglContext)
+    override init(frame: CGRect) {
+        super.init(frame: frame, context: eaglContext!)
         
-        context = self.eaglContext
+        context = self.eaglContext!
         delegate = self
     }
     
-    override init(frame: CGRect, context: EAGLContext)
-    {
+    override init(frame: CGRect, context: EAGLContext) {
         fatalError("init(frame:, context:) has not been implemented")
     }
     
-    required init?(coder aDecoder: NSCoder)
-    {
+    required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
     /// The image to display
-    var image: CIImage?
-        {
-        didSet
-        {
+    var image: CIImage? {
+        didSet {
             setNeedsDisplay()
         }
     }
 }
 
-extension OpenGLImageView: GLKViewDelegate
-{
-    func glkView(view: GLKView, drawInRect rect: CGRect)
-    {
-        guard let image = image else
-        {
+extension OpenGLImageView: GLKViewDelegate {
+    func glkView(_ view: GLKView, drawIn rect: CGRect) {
+        guard let image = image else {
             return
         }
         
         let targetRect = image.extent.aspectFitInRect(
-            target: CGRect(origin: CGPointZero,
+            target: CGRect(origin: CGPoint.zero,
                 size: CGSize(width: drawableWidth,
                     height: drawableHeight)))
         
         let ciBackgroundColor = CIColor(
-            color: backgroundColor ?? UIColor.whiteColor())
+            color: backgroundColor ?? UIColor.white)
         
-        ciContext.drawImage(CIImage(color: ciBackgroundColor),
-            inRect: CGRect(x: 0,
-                y: 0,
-                width: drawableWidth,
-                height: drawableHeight),
-            fromRect: CGRect(x: 0,
+        ciContext.draw(CIImage(color: ciBackgroundColor),
+                       in: CGRect(x: 0,
+                                  y: 0,
+                                  width: drawableWidth,
+                                  height: drawableHeight),
+                       from: CGRect(x: 0,
                 y: 0,
                 width: drawableWidth,
                 height: drawableHeight))
         
-        ciContext.drawImage(image,
-            inRect: targetRect,
-            fromRect: image.extent)
+        ciContext.draw(image,
+                       in: targetRect,
+                       from: image.extent)
     }
 }
 
-extension CGRect
-{
-    func aspectFitInRect(target target: CGRect) -> CGRect
-    {
-        let scale: CGFloat =
-        {
+extension CGRect {
+    func aspectFitInRect(target: CGRect) -> CGRect {
+        let scale: CGFloat = {
             let scale = target.width / self.width
             
             return self.height * scale <= target.height ?

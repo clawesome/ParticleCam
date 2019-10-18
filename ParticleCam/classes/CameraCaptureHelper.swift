@@ -17,15 +17,14 @@ import UIKit
 ///
 /// The helper's delegate, `CameraCaptureHelperDelegate` receives notification of
 /// a new image in the main thread via `newCameraImage()`.
-class CameraCaptureHelper: NSObject
-{
+class CameraCaptureHelper: NSObject {
     let captureSession = AVCaptureSession()
-    let cameraPosition: AVCaptureDevicePosition
+    let cameraPosition: AVCaptureDevice.Position
     
     weak var delegate: CameraCaptureHelperDelegate?
+    private var videoDataOutputQueue: DispatchQueue?
     
-    required init(cameraPosition: AVCaptureDevicePosition)
-    {
+    required init(cameraPosition: AVCaptureDevice.Position) {
         self.cameraPosition = cameraPosition
         
         super.init()
@@ -33,35 +32,33 @@ class CameraCaptureHelper: NSObject
         initialiseCaptureSession()
     }
     
-    private func initialiseCaptureSession()
-    {
-        captureSession.sessionPreset = AVCaptureSessionPresetiFrame1280x720
+    private func initialiseCaptureSession() {
+        captureSession.sessionPreset = AVCaptureSession.Preset.hd1920x1080
         
-        guard let camera = (AVCaptureDevice.devicesWithMediaType(AVMediaTypeVideo) as! [AVCaptureDevice])
+        guard let camera = (AVCaptureDevice.devices(for: AVMediaType.video))
             .filter({ $0.position == cameraPosition })
-            .first else
-        {
+            .first else {
             fatalError("Unable to access camera")
         }
         
-        do
-        {
+        do {
             let input = try AVCaptureDeviceInput(device: camera)
             
             captureSession.addInput(input)
-        }
-        catch
-        {
+        } catch {
             fatalError("Unable to access back camera")
         }
         
+        
+        
         let videoOutput = AVCaptureVideoDataOutput()
         
-        videoOutput.setSampleBufferDelegate(self,
-            queue: dispatch_queue_create("sample buffer delegate", DISPATCH_QUEUE_SERIAL))
+        videoDataOutputQueue = DispatchQueue(label: "sample buffer delegate")
+        videoOutput.setSampleBufferDelegate(self, queue: videoDataOutputQueue)
         
-        if captureSession.canAddOutput(videoOutput)
-        {
+        //videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "sample buffer delegate"))
+        
+        if captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
         }
         
@@ -69,27 +66,21 @@ class CameraCaptureHelper: NSObject
     }
 }
 
-extension CameraCaptureHelper: AVCaptureVideoDataOutputSampleBufferDelegate
-{
-    func captureOutput(captureOutput: AVCaptureOutput!, didOutputSampleBuffer sampleBuffer: CMSampleBuffer!, fromConnection connection: AVCaptureConnection!)
-    {
-        connection.videoOrientation = AVCaptureVideoOrientation(rawValue: UIApplication.sharedApplication().statusBarOrientation.rawValue)!
+extension CameraCaptureHelper: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else
-        {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
         }
-        
-        dispatch_async(dispatch_get_main_queue())
-            {
-                self.delegate?.newCameraImage(self,
-                    image: CIImage(CVPixelBuffer: pixelBuffer))
+        DispatchQueue.main.sync {
+            connection.videoOrientation = AVCaptureVideoOrientation(rawValue: UIApplication.shared.statusBarOrientation.rawValue)!
+            self.delegate?.newCameraImage(cameraCaptureHelper: self,
+                                          image: CIImage(cvPixelBuffer: pixelBuffer))
         }
         
     }
 }
 
-protocol CameraCaptureHelperDelegate: class
-{
+protocol CameraCaptureHelperDelegate: class {
     func newCameraImage(cameraCaptureHelper: CameraCaptureHelper, image: CIImage)
 }

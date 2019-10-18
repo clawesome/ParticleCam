@@ -26,8 +26,7 @@ using namespace metal;
 float rand(int x, int y, int z);
 
 // Generate a random float in the range [0.0f, 1.0f] using x, y, and z (based on the xor128 algorithm)
-float rand(int x, int y, int z)
-{
+float rand(int x, int y, int z) {
     int seed = x + y * 57 + z * 241;
     seed= (seed<< 13) ^ seed;
     return (( 1.0 - ( (seed * (seed * seed * 15731 + 789221) + 1376312589) & 2147483647) / 1073741824.0f) + 1.0f) / 2.0f;
@@ -58,8 +57,8 @@ kernel void particleRendererShader(
     }
     else
     {
-        inParticle.z = rand(inParticle.w, inParticle.x,
-            inParticle.y) * 2.0 - 1.0;
+        inParticle.z = (rand(inParticle.w, inParticle.x,
+            inParticle.y) * 2.0 - 1.0);
         inParticle.w = rand(inParticle.z, inParticle.y,
             inParticle.x) * 2.0 - 1.0;
         
